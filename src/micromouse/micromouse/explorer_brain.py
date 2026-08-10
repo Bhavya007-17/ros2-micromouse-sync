@@ -127,7 +127,7 @@ class Bridge(Node):
         mms.log("[explorer] TIMEOUT waiting for '%s'" % command)
         return False
 
-    def settled_reading(self, cell_size, agreements=2,
+    def settled_reading(self, cell_size, agreements=3,
                         timeout: float = SCAN_TIMEOUT):
         """Wait until consecutive scans agree on the walls, and return those.
 
@@ -143,6 +143,10 @@ class Bridge(Node):
         rejects the in-flight stale one without needing the sensor to tell us
         which pose it used -- which matters because the real Gazebo lidar
         cannot.
+
+        Three agreements, not two: under load (a recorder subscribing, say) two
+        consecutive stale scans can both arrive before the new pose lands, and
+        the run then wanders. The extra wait is one lidar period per cell.
         """
         deadline = time.time() + timeout
         with self._lock:

@@ -169,10 +169,23 @@ the default.
 
 ## Demo recordings
 
-> **Note:** the GIFs below were recorded from the **omniscient baseline** brain,
-> before the explorer existed — they show a robot walking a path it already
-> knew. They have not been re-recorded yet. Regenerate them against the
-> explorer with the command below.
+<p align="center">
+  <img src="media/exploration.gif" alt="The robot discovering a 16x16 maze: belief on the left, truth on the right" width="820"/>
+  <br/>
+  <sub><b>Belief vs truth.</b> Left is only what the robot has sensed — solid walls are measured, faint ones it has never looked at. Watch the search run feel its way out, the return trip come home, then the speed run draw a single clean line through a map it built itself.</sub>
+</p>
+
+Record it yourself (no Gazebo needed — the recorder subscribes to `/maze/belief`,
+which is `TRANSIENT_LOCAL`, so it can join late and still get every frame):
+
+```bash
+python3 scripts/record_exploration_gif.py --out media/exploration.gif --every 2 &
+python3 scripts/run_explorer_headless.py
+```
+
+> **Note:** the GIFs below predate the explorer — they were recorded from the
+> **omniscient baseline**, a robot walking a path it already knew. Kept for
+> comparison.
 
 Automated capture (headless mms host + live ROS recorder):
 
@@ -183,6 +196,7 @@ chmod +x scripts/record_full_session.sh
 
 | Artifact | Description |
 |----------|-------------|
+| [`media/exploration.gif`](media/exploration.gif) | **The explorer** — belief vs truth, search → return → speed |
 | [`media/micromouse_demo.gif`](media/micromouse_demo.gif) | **Full demo** — autoplays in README (mms GUI + Gazebo solve) |
 | [`media/micromouse_demo.mp4`](media/micromouse_demo.mp4) | Same run as MP4 (higher quality download) |
 | `media/mms_solve.gif` | Offline mms-style flood-fill animation |
