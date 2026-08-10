@@ -31,6 +31,8 @@ setup(
             'generate_maze = micromouse.generate_maze:main',
             'cell_motion_controller = micromouse.cell_motion_controller:main',
             'gazebo_sync_brain = micromouse.gazebo_sync_brain:main',
+            'explorer_brain = micromouse.explorer_brain:main',
+            'raycast_lidar = micromouse.raycast_lidar:main',
             'brain_viz = micromouse.brain_viz:main',
         ],
     },

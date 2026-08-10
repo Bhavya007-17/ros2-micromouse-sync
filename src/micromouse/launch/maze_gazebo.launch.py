@@ -12,6 +12,9 @@ Usage:
   ros2 launch micromouse maze_gazebo.launch.py
   ros2 launch micromouse maze_gazebo.launch.py headless:=true     # no gz GUI
   ros2 launch micromouse maze_gazebo.launch.py viz:=false
+  ros2 launch micromouse maze_gazebo.launch.py motion:=pose       # teleport
+  ros2 launch micromouse maze_gazebo.launch.py lidar:=gz          # real sensor
+  ros2 launch micromouse maze_gazebo.launch.py lidar_noise:=0.01
   ros2 launch micromouse maze_gazebo.launch.py spec:=/path/maze_spec.json \
                                                world:=/path/maze.world
 """
@@ -35,6 +38,7 @@ MODEL_NAME = "micromouse"   # the spawned robot's entity name
 
 def _setup(context, *args, **kwargs):
     spec_path = LaunchConfiguration("spec").perform(context)
+    truth_path = LaunchConfiguration("truth").perform(context)
     world_path = LaunchConfiguration("world").perform(context)
     headless = LaunchConfiguration("headless").perform(context) == "true"
 
@@ -53,7 +57,10 @@ def _setup(context, *args, **kwargs):
 
     pkg = get_package_share_directory("micromouse")
     xacro_file = os.path.join(pkg, "description", "micromouse.urdf.xacro")
-    robot_description = os.popen("xacro " + xacro_file).read()
+    use_lidar = LaunchConfiguration("lidar").perform(context) == "gz"
+    robot_description = os.popen(
+        "xacro %s use_lidar:=%s" % (xacro_file,
+                                    "true" if use_lidar else "false")).read()
 
     ros_gz_sim = get_package_share_directory("ros_gz_sim")
     gz_args = ("-s -r -v3 " if headless else "-r -v3 ") + world_path
@@ -84,6 +91,8 @@ def _setup(context, *args, **kwargs):
 
     steps_arg = int(LaunchConfiguration("steps").perform(context))
     step_dt_arg = float(LaunchConfiguration("step_dt").perform(context))
+    motion = LaunchConfiguration("motion").perform(context)
+    lidar = LaunchConfiguration("lidar").perform(context)
     controller = Node(
         package="micromouse",
         executable="cell_motion_controller",
@@ -92,9 +101,37 @@ def _setup(context, *args, **kwargs):
                      "world_name": WORLD_NAME,
                      "model_name": MODEL_NAME,
                      "robot_z": WHEEL_RADIUS,
+                     "motion": motion,
                      "steps": steps_arg,
                      "step_dt": step_dt_arg}],
     )
+
+    # The bridge config has existed since the first commit but nothing ever
+    # started it, because the old stack teleported the robot. Closed-loop
+    # driving needs /cmd_vel out and /odom back, and the real gz lidar needs
+    # /scan, so now it earns its place.
+    extra = []
+    if motion == "velocity" or lidar == "gz":
+        extra.append(Node(
+            package="ros_gz_bridge",
+            executable="parameter_bridge",
+            output="screen",
+            parameters=[{"config_file": os.path.join(pkg, "config",
+                                                     "bridge.yaml")}],
+        ))
+    if lidar == "raycast":
+        # Owns the truth file and publishes /scan. The brain cannot tell this
+        # apart from the Gazebo sensor -- same message, same topic.
+        extra.append(Node(
+            package="micromouse",
+            executable="raycast_lidar",
+            output="screen",
+            parameters=[{"truth_path": truth_path,
+                         "num_rays": int(LaunchConfiguration(
+                             "lidar_rays").perform(context)),
+                         "noise_stddev": float(LaunchConfiguration(
+                             "lidar_noise").perform(context))}],
+        ))
 
     viz = Node(
         package="micromouse",
@@ -105,17 +142,19 @@ def _setup(context, *args, **kwargs):
     )
 
     solver = os.path.join(pkg, "..", "..", "lib", "micromouse",
-                          "gazebo_sync_brain")
+                          "explorer_brain")
     steps = LogInfo(msg=(
         "\n" + "=" * 70 +
-        "\nMaze + robot up. Configure the mms GUI:\n"
+        "\nMaze + robot up (motion=%s, lidar=%s)." % (motion, lidar) +
+        "\nConfigure the mms GUI:\n"
         "  Maze  -> " + os.path.join(os.path.dirname(spec_path), "maze.num") +
         "\n  Mouse -> Run command:  python3 " + solver +
-        "\n  (or point it at micromouse/gazebo_sync_brain.py in your src tree)"
+        "\n  (explorer_brain discovers the maze; gazebo_sync_brain is the"
+        "\n   omniscient baseline that reads it from the truth file)"
         "\nLaunch mms from a terminal that sourced ROS + this workspace.\n"
         + "=" * 70))
 
-    return [gz, rsp, delayed_spawn, controller, viz, steps]
+    return [gz, rsp, delayed_spawn, controller] + extra + [viz, steps]
 
 
 def generate_launch_description():
@@ -126,8 +165,21 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "world", default_value=os.path.expanduser(
                 "~/.micromouse/maze.world")),
+        DeclareLaunchArgument(
+            "truth", default_value=os.path.expanduser(
+                "~/.micromouse/maze_truth.json")),
         DeclareLaunchArgument("headless", default_value="false"),
         DeclareLaunchArgument("viz", default_value="true"),
+        # How the robot moves: "velocity" drives the wheels and reads /odom;
+        # "pose" teleports (exact, no physics needed, proves nothing about
+        # localisation -- use it when you just need a clean recording).
+        DeclareLaunchArgument("motion", default_value="velocity"),
+        # Where range data comes from: "raycast" simulates it from the maze
+        # truth file and needs no GPU; "gz" uses the real Gazebo gpu_lidar,
+        # which needs a working render engine.
+        DeclareLaunchArgument("lidar", default_value="raycast"),
+        DeclareLaunchArgument("lidar_rays", default_value="72"),
+        DeclareLaunchArgument("lidar_noise", default_value="0.0"),
         # Motion smoothness vs speed. steps:=1 = instant teleport (fastest);
         # raise both for a smoother glide.
         DeclareLaunchArgument("steps", default_value="2"),

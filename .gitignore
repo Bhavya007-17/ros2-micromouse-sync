@@ -6,6 +6,8 @@ log/
 __pycache__/
 .pytest_cache/
 *.egg-info/
+.coverage
+htmlcov/
 
 # IDE / OS
 .vscode/

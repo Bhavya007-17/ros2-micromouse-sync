@@ -7,27 +7,32 @@ the goal.
 from . import conventions as C
 
 
-def pick_next_dir(maze, dist, cur, heading):
+def pick_next_dir(maze, dist, cur, heading, visited=None):
     """Return the best direction to step from `cur`, or None if already a sink.
 
-    Chooses the reachable neighbor with the smallest distance. Ties prefer
-    going straight (current heading), then the fixed order N, E, S, W -- this
-    keeps the path smooth and the behavior deterministic.
+    Chooses the reachable neighbor with the smallest distance. Ties are broken
+    in this order:
+
+      1. an unvisited cell, when `visited` is supplied -- during exploration
+         this steers the robot into new ground at no cost, because only
+         equal-distance candidates ever reach this test
+      2. continuing straight (current heading), which keeps the path smooth
+      3. the fixed order N, E, S, W, which keeps the behavior deterministic
+
+    Passing `visited=None` reproduces the original two-rule behavior exactly.
     """
+    best_key = None
     best_dir = None
-    best_val = None
     for d in (C.N, C.E, C.S, C.W):
         if not maze.open_between(cur[0], cur[1], d):
             continue
-        nx, ny = maze.neighbor(cur[0], cur[1], d)
-        val = dist[(nx, ny)]
-        if best_val is None or val < best_val:
-            best_val, best_dir = val, d
-        elif val == best_val:
-            # tie-break: prefer continuing straight, else lower direction index
-            if d == heading and best_dir != heading:
-                best_dir = d
-    if best_dir is None or best_val >= dist[cur]:
+        nxt = maze.neighbor(cur[0], cur[1], d)
+        key = (dist[nxt],
+               0 if (visited is not None and nxt not in visited) else 1,
+               0 if d == heading else 1)
+        if best_key is None or key < best_key:
+            best_key, best_dir = key, d
+    if best_dir is None or best_key[0] >= dist[cur]:
         return None  # no strictly-better neighbor (we are at/below the goal)
     return best_dir
 

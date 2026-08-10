@@ -2,8 +2,12 @@
 
 Outputs (default dir ~/.micromouse):
   maze.num         -> load this in the mms GUI
-  maze_spec.json   -> read by the solver and the controller
+  maze_spec.json   -> PUBLIC spec (size, geometry, start, goal -- no walls)
+  maze_truth.json  -> the walls; for the sim, the viz and the baseline brain
   maze.world       -> Gazebo world with physical walls
+
+The two-file split is what makes "the explorer solves an unseen maze" checkable
+rather than a claim. See micromouse/spec.py.
 
 Run:  ros2 run micromouse generate_maze            (or: python3 generate_maze.py)
 """
@@ -32,6 +36,9 @@ def main(argv=None):
                    help="print an ASCII maze + distances")
     p.add_argument("--top-down-cam", action="store_true",
                    help="bake a straight-down GUI camera into the world")
+    p.add_argument("--sensors", action="store_true",
+                   help="add the gz sensors system so the real gpu_lidar works "
+                        "(needs a GPU render engine; use with lidar:=gz)")
     args = p.parse_args(argv)
 
     os.makedirs(args.out_dir, exist_ok=True)
@@ -46,16 +53,22 @@ def main(argv=None):
     assert dist[start] < flood_fill.INF, "goal is not reachable from start"
 
     num_path = os.path.join(args.out_dir, "maze.num")
-    spec_path = os.path.join(args.out_dir, "maze_spec.json")
+    spec_path = os.path.join(args.out_dir, spec_mod.PUBLIC_NAME)
+    truth_path = os.path.join(args.out_dir, spec_mod.TRUTH_NAME)
     world_path = os.path.join(args.out_dir, "maze.world")
 
     mms_format.write(num_path, m)
-    spec_mod.write(spec_path, m, args.cell_size, args.wall_thickness,
-                   args.wall_height)
+    # Two files on purpose: the explorer brain may read the public spec only.
+    # See micromouse/spec.py.
+    spec_mod.write_public(spec_path, m, args.cell_size, args.wall_thickness,
+                          args.wall_height)
+    spec_mod.write_truth(truth_path, m, args.cell_size, args.wall_thickness,
+                         args.wall_height)
     with open(world_path, "w") as f:
         f.write(sdf_builder.build_world(m, args.cell_size, args.wall_thickness,
                                         args.wall_height,
-                                        add_gui=args.top_down_cam))
+                                        add_gui=args.top_down_cam,
+                                        sensors=args.sensors))
 
     if args.preview:
         print(maze_mod.ascii_art(m, dist))
@@ -67,7 +80,9 @@ def main(argv=None):
     print(bar)
     print("Files written:")
     print("  mms maze file : {}".format(num_path))
-    print("  maze spec     : {}".format(spec_path))
+    print("  public spec   : {}  (no walls -- what the explorer may read)"
+          .format(spec_path))
+    print("  maze truth    : {}  (walls -- sim + viz only)".format(truth_path))
     print("  gazebo world  : {}".format(world_path))
     print(bar)
     print("Next:")

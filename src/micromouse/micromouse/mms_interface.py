@@ -72,6 +72,10 @@ def set_color(x, y, color):
     _command(["setColor", x, y, color])
 
 
+def clear_color(x, y):
+    _command(["clearColor", x, y])
+
+
 def clear_all_color():
     _command(["clearAllColor"])
 
@@ -80,8 +84,21 @@ def set_text(x, y, text):
     _command(["setText", x, y, text])
 
 
+def clear_text(x, y):
+    _command(["clearText", x, y])
+
+
 def clear_all_text():
     _command(["clearAllText"])
+
+
+def set_wall(x, y, direction):
+    """Draw a wall the robot has discovered. `direction` is "n"/"e"/"s"/"w"."""
+    _command(["setWall", x, y, direction])
+
+
+def clear_wall(x, y, direction):
+    _command(["clearWall", x, y, direction])
 
 
 # -- reset handling -----------------------------------------------------------

@@ -5,6 +5,11 @@
        wheel_radius=0.04, wheel_separation=0.13. Spawn at z=0.04 so the
        wheels rest on the ground. -->
 
+  <!-- The real Gazebo LiDAR is off by default. gpu_lidar needs the Ogre render
+       engine, which does not load on a GPU-less host, so the default sensor is
+       the raycast_lidar node. Turn this on with lidar:=gz. -->
+  <xacro:arg name="use_lidar" default="false"/>
+
   <link name="base_link">
     <visual>
       <geometry><box size="0.12 0.09 0.04"/></geometry>
@@ -88,6 +93,57 @@
     <child link="caster"/>
     <origin xyz="0.045 0 -0.02" rpy="0 0 0"/>
   </joint>
+
+  <!-- lidar mount (always present so TF is stable; the sensor itself is
+       conditional) -->
+  <link name="lidar_link">
+    <visual>
+      <geometry><cylinder length="0.01" radius="0.015"/></geometry>
+      <material name="lidar"><color rgba="0.8 0.2 0.2 1"/></material>
+    </visual>
+    <inertial>
+      <mass value="0.01"/>
+      <inertia ixx="0.0000006" ixy="0" ixz="0"
+               iyy="0.0000006" iyz="0" izz="0.0000011"/>
+    </inertial>
+  </link>
+  <joint name="lidar_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="lidar_link"/>
+    <origin xyz="0 0 0.025" rpy="0 0 0"/>
+  </joint>
+
+  <xacro:if value="$(arg use_lidar)">
+    <gazebo reference="lidar_link">
+      <sensor name="lidar" type="gpu_lidar">
+        <topic>/scan</topic>
+        <gz_frame_id>lidar_link</gz_frame_id>
+        <update_rate>20</update_rate>
+        <always_on>true</always_on>
+        <visualize>false</visualize>
+        <lidar>
+          <scan>
+            <horizontal>
+              <samples>72</samples>
+              <resolution>1</resolution>
+              <min_angle>-3.141593</min_angle>
+              <max_angle>3.141593</max_angle>
+            </horizontal>
+          </scan>
+          <range>
+            <min>0.02</min>
+            <max>4.0</max>
+            <resolution>0.01</resolution>
+          </range>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.0</stddev>
+          </noise>
+        </lidar>
+      </sensor>
+    </gazebo>
+  </xacro:if>
 
   <!-- gz friction: grippy wheels, slippery caster -->
   <gazebo reference="left_wheel">

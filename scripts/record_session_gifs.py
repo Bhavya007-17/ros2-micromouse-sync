@@ -154,7 +154,8 @@ def _gazebo_frame(maze, cell_m, trail, cur):
 
 def main(argv=None):
     p = argparse.ArgumentParser()
-    p.add_argument("--spec", default=os.path.expanduser("~/.micromouse/maze_spec.json"))
+    # The recorder draws the real maze, so it reads the truth file.
+    p.add_argument("--spec", default=spec_mod.truth_path())
     p.add_argument("--duration", type=float, default=90.0,
                    help="max seconds to wait for the trail to arrive")
     p.add_argument("--settle", type=float, default=2.5,
@@ -167,7 +168,7 @@ def main(argv=None):
     p.add_argument("--gazebo-gif", default="media/gazebo_path.gif")
     args = p.parse_args(argv)
 
-    maze, data = spec_mod.read(args.spec)
+    maze, data = spec_mod.read_truth(args.spec)
     goals = set(tuple(g) for g in data["goal_cells"])
     dist = FF.flood_fill_distances(maze, list(goals))
     vmax = max((v for v in dist.values() if v < FF.INF), default=1)

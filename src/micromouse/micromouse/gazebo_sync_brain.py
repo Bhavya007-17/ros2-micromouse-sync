@@ -13,8 +13,12 @@ and animates the Gazebo robot one cell at a time, catching up smoothly. Only at
 the very end do we wait for the robot to drain its queue (so mms keeps the
 process alive and no command is lost).
 
-Full maze is known up front (read from maze_spec.json), so no wall-sensing and
+Full maze is known up front (read from maze_truth.json), so no wall-sensing and
 no re-flooding -- distances are computed once, exactly like the screenshot.
+
+This is the OMNISCIENT BASELINE. It is kept deliberately: `explorer_brain.py`
+solves the same maze without ever seeing it, and the contrast between the two is
+the point. If you want the robot to actually discover the maze, run that one.
 
 IMPORTANT: stdout is the mms protocol channel. All diagnostics go to stderr.
 """
@@ -39,8 +43,7 @@ from micromouse import planner as P
 from micromouse import spec as spec_mod
 from micromouse import mms_interface as mms
 
-SPEC_PATH = os.environ.get("MICROMOUSE_SPEC",
-                           os.path.expanduser("~/.micromouse/maze_spec.json"))
+SPEC_PATH = spec_mod.truth_path()
 CMD_TOPIC = os.environ.get("MICROMOUSE_CMD_TOPIC", "/maze/mms_command")
 DONE_TOPIC = os.environ.get("MICROMOUSE_DONE_TOPIC", "/maze/step_complete")
 CELL_TOPIC = os.environ.get("MICROMOUSE_CELL_TOPIC", "/maze/current_cell")

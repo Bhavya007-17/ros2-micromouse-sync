@@ -82,12 +82,28 @@ def _gui_block(span: float) -> str:
     </gui>""".format(cx=cx, cy=cy, h=h)
 
 
+_SENSORS_PLUGIN = """
+    <plugin filename="gz-sim-sensors-system"
+            name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+"""
+
+
 def build_world(maze: Maze, cell_size: float, wall_thickness: float,
                 wall_height: float, world_name: str = "micromouse",
-                add_gui: bool = False) -> str:
+                add_gui: bool = False, sensors: bool = False) -> str:
+    """Build the world SDF.
+
+    `sensors` adds the system that drives Gazebo's own gpu_lidar. It is off by
+    default because that system initialises the Ogre render engine, which fails
+    on a GPU-less host and takes the whole world down with it -- and the default
+    setup does not need it, since the range data comes from `raycast_lidar`.
+    """
     walls = _wall_boxes(maze, cell_size, wall_thickness, wall_height)
     span = maze.n * cell_size
     gui = _gui_block(span) if add_gui else ""
+    sensor_plugin = _SENSORS_PLUGIN if sensors else ""
     return """<?xml version="1.0" ?>
 <sdf version="1.9">
   <world name="{world_name}">
@@ -103,6 +119,7 @@ def build_world(maze: Maze, cell_size: float, wall_thickness: float,
             name="gz::sim::systems::UserCommands"/>
     <plugin filename="gz-sim-scene-broadcaster-system"
             name="gz::sim::systems::SceneBroadcaster"/>
+{sensor_plugin}
 
     <gravity>0 0 -9.8</gravity>
 
@@ -144,4 +161,5 @@ def build_world(maze: Maze, cell_size: float, wall_thickness: float,
   </world>
 </sdf>
 """.format(world_name=world_name, walls=walls, gui=gui,
+           sensor_plugin=sensor_plugin,
            big=max(20.0, span * 2.0), cx=span / 2.0, cy=span / 2.0)

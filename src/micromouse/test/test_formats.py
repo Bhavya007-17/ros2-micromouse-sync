@@ -36,3 +36,16 @@ def test_world_sdf_is_well_formed():
     root = ET.fromstring(world)            # raises if malformed
     assert root.tag == "sdf"
     assert world.count('<collision name="col_') > 100
+
+
+def test_the_sensors_system_is_opt_in():
+    """It initialises the Ogre render engine, which kills the world on a
+    GPU-less host, so the default world must not carry it."""
+    m = M.generate(n=4, seed=7)
+    plain = sdf_builder.build_world(m, 0.30, 0.02, 0.15)
+    withsensors = sdf_builder.build_world(m, 0.30, 0.02, 0.15, sensors=True)
+
+    assert "gz-sim-sensors-system" not in plain
+    assert "gz-sim-sensors-system" in withsensors
+    assert "<render_engine>ogre2</render_engine>" in withsensors
+    ET.fromstring(withsensors)             # still well formed

@@ -5,8 +5,9 @@ Pipe with the brain (host reads brain commands on stdin, writes responses on std
 
     python3 scripts/headless_mms_host.py | python3 -m micromouse.gazebo_sync_brain
 
-The brain uses full maze knowledge from maze_spec.json, so wall queries always
-return false and motion always succeeds.
+This host only serves the maze size and acks motion. It never reports walls --
+wall queries always return false. Both brains ignore them anyway: the baseline
+brain reads the truth file, and the explorer gets its walls from /scan.
 """
 import json
 import os
