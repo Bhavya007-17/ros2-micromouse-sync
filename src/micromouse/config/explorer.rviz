@@ -1,0 +1,94 @@
+# No Panels block on purpose: the Displays dock would eat half the window, and
+# this config exists to be captured, not clicked.
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Cell Size: 0.3
+      Plane Cell Count: 40
+      Color: 190; 190; 190
+      Line Style:
+        Line Width: 0.01
+        Value: Lines
+      Reference Frame: <Fixed Frame>
+    - Class: rviz_default_plugins/RobotModel
+      Name: RobotModel
+      Enabled: true
+      Description Source: Topic
+      Description Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        Value: /robot_description
+      Visual Enabled: true
+      Collision Enabled: false
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Enabled: true
+      Marker Scale: 0.25
+      Show Arrows: false
+      Show Axes: true
+      Show Names: false
+    - Class: rviz_default_plugins/LaserScan
+      Name: LaserScan
+      Enabled: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Reliability Policy: Reliable
+        Value: /scan
+      Style: Spheres
+      Size (m): 0.025
+      Color: 255; 60; 60
+      Color Transformer: FlatColor
+      Decay Time: 0
+    - Class: rviz_default_plugins/Odometry
+      Name: Odometry
+      Enabled: true
+      Topic:
+        Depth: 500
+        Durability Policy: Volatile
+        Reliability Policy: Reliable
+        Value: /odom
+      Keep: 400
+      Position Tolerance: 0.02
+      Angle Tolerance: 0.1
+      Shape:
+        Alpha: 0.9
+        Color: 40; 110; 240
+        Head Length: 0.03
+        Head Radius: 0.02
+        Shaft Length: 0.06
+        Shaft Radius: 0.008
+        Value: Arrow
+  Global Options:
+    Background Color: 255; 255; 255
+    Fixed Frame: odom
+    Frame Rate: 10
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+  Value: true
+  Views:
+    Current:
+      # Top-down orthographic: a maze reads far better flat than in perspective.
+      # Targeted on base_link so the view follows the robot -- the odom frame is
+      # anchored at the spawn pose and rotated 90 degrees from the world, so a
+      # fixed centre in odom coordinates lands off the maze entirely.
+      Class: rviz_default_plugins/TopDownOrtho
+      Name: Current View
+      Target Frame: base_link
+      Scale: 200
+      X: 0
+      Y: 0
+      Angle: 0
+      Near Clip Distance: 0.01
+    Saved: ~
+Window Geometry:
+  Displays:
+    collapsed: true
+  Height: 640
+  Width: 640
+  Hide Left Dock: true
+  Hide Right Dock: true

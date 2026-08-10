@@ -72,13 +72,27 @@ def _gui_block(span: float) -> str:
       <plugin filename="MinimalScene" name="3D View">
         <gz-gui>
           <property type="string" key="state">docked</property>
+          <property type="bool" key="showTitleBar">false</property>
         </gz-gui>
+        <!-- Without an explicit engine the pane reports
+             "Engine [] is not supported" and renders nothing. ogre2 works
+             under llvmpipe, which is what makes headless capture possible. -->
+        <engine>ogre2</engine>
+        <scene>scene</scene>
         <camera_pose>{cx:.3f} {cy:.3f} {h:.3f} 0 1.5708 0</camera_pose>
         <background_color>0.85 0.85 0.85</background_color>
       </plugin>
-      <plugin filename="GzSceneManager" name="Scene Manager"/>
-      <plugin filename="InteractiveViewControl" name="Interactive view control"/>
-      <plugin filename="CameraTracking" name="Camera Tracking"/>
+      <!-- Scene Manager only. The interactive-view and camera-tracking
+           plugins each claim a docked panel and squeeze the 3D view down to a
+           sliver, which matters when the window is being captured. -->
+      <plugin filename="GzSceneManager" name="Scene Manager">
+        <gz-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="string" key="state">floating</property>
+          <property type="double" key="width">0</property>
+          <property type="double" key="height">0</property>
+        </gz-gui>
+      </plugin>
     </gui>""".format(cx=cx, cy=cy, h=h)
 
 

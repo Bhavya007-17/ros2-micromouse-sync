@@ -175,8 +175,25 @@ the default.
   <sub><b>Belief vs truth.</b> Left is only what the robot has sensed — solid walls are measured, faint ones it has never looked at. Watch the search run feel its way out, the return trip come home, then the speed run draw a single clean line through a map it built itself.</sub>
 </p>
 
-Record it yourself (no Gazebo needed — the recorder subscribes to `/maze/belief`,
-which is `TRANSIENT_LOCAL`, so it can join late and still get every frame):
+<p align="center">
+  <img src="media/quad.gif" alt="Four views of one run: belief, truth, Gazebo and RViz" width="740"/>
+  <br/>
+  <sub><b>The same run, four ways.</b> Belief and truth on top; below them the robot driving the real maze in Gazebo, and RViz showing live <code>/scan</code> and the odometry trail it is navigating by. 8×8, closed-loop <code>/cmd_vel</code>, 31 moves — the true optimum.</sub>
+</p>
+
+```bash
+./scripts/record_quad_session.sh --size 8 --seed 5
+```
+
+Gazebo and RViz there are real windows, not redraws. They cannot be screen-grabbed
+under WSLg — it is rootless, so each app is its own Windows window and the X root
+grabs black — so each gets a nested `Xvfb` screen with a tiny window manager, and
+`ffmpeg` captures that. Rendering is llvmpipe (software), which is why the maze is
+small and the capture rate low.
+
+Record just the belief view (no Gazebo needed — the recorder subscribes to
+`/maze/belief`, which is `TRANSIENT_LOCAL`, so it can join late and still get every
+frame):
 
 ```bash
 python3 scripts/record_exploration_gif.py --out media/exploration.gif --every 2 &
@@ -196,6 +213,7 @@ chmod +x scripts/record_full_session.sh
 
 | Artifact | Description |
 |----------|-------------|
+| [`media/quad.gif`](media/quad.gif) | **Four views** — belief, truth, Gazebo, RViz, one run |
 | [`media/exploration.gif`](media/exploration.gif) | **The explorer** — belief vs truth, search → return → speed |
 | [`media/micromouse_demo.gif`](media/micromouse_demo.gif) | **Full demo** — autoplays in README (mms GUI + Gazebo solve) |
 | [`media/micromouse_demo.mp4`](media/micromouse_demo.mp4) | Same run as MP4 (higher quality download) |
