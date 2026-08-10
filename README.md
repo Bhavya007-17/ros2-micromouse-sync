@@ -1,6 +1,8 @@
-# Micromouse — flood-fill maze solver with lockstep Gazebo mirroring
+# Micromouse — a robot that discovers the maze it is solving
 
-> A production-style ROS 2 micromouse stack where the **same flood-fill brain** drives the [mackorone/mms](https://github.com/mackorone/mms) GUI and a differential-drive robot in **Gazebo Harmonic**, cell by cell, in real time.
+> A ROS 2 micromouse stack where the robot is given **no map**. It feels out walls one cell at a time with a LiDAR, tracks itself with wheel odometry, builds the maze as it goes, and then runs its own learned map at speed — driving a differential-drive robot in **Gazebo Harmonic** while [mackorone/mms](https://github.com/mackorone/mms) shows what it currently believes.
+
+**Verified end to end:** on a 10×10 maze whose true shortest path is 50 moves, generated from a seed the brain never sees, the robot searches in 50, returns in 50, and runs the learned map in 50 — under closed-loop `/cmd_vel` control with position read back from `/odom`.
 
 <p align="center">
   <img src="media/micromouse_demo.gif" alt="Full micromouse demo — mms flood-fill and Gazebo robot solving a 16×16 maze" width="820"/>
@@ -37,9 +39,11 @@ This workspace separates concerns the way competitive micromouse teams do in sof
 
 | Layer | Responsibility | Swappable? |
 |-------|----------------|------------|
-| **Brain** (`gazebo_sync_brain`) | Flood-fill from center goal, gradient walk, mms protocol | Runs in mms GUI *or* headless host |
-| **Maze generator** (`generate_maze`) | Seeded perfect maze → `.num`, JSON spec, Gazebo world | Single source of truth |
-| **Motion bridge** (`cell_motion_controller`) | One mms command → one cell move in simulation | Pose-driven, WSL-safe |
+| **Explorer** (`explorer_brain`) | Belief map, flood-fill, search/return/speed, mms protocol | Runs in mms GUI *or* headless host |
+| **Baseline** (`gazebo_sync_brain`) | The same maze solved with the answer already on disk | Kept for comparison |
+| **Sensor** (`raycast_lidar`) | Publishes a real `LaserScan` by ray-marching the maze | `lidar:=gz` swaps in Gazebo's `gpu_lidar` |
+| **Maze generator** (`generate_maze`) | Seeded maze → `.num`, public spec, truth file, Gazebo world | Single source of truth |
+| **Motion** (`cell_motion_controller`) | One mms command → one cell move | `motion:=velocity` drives; `motion:=pose` teleports |
 | **Live viz** (`brain_viz`) | Distance grid + path trail from ROS topics | Independent window |
 
 The brain speaks the **mms stdin/stdout text protocol** unchanged. A headless host, the real mms AppImage, or the official mms GUI are interchangeable front-ends.
@@ -49,34 +53,38 @@ The brain speaks the **mms stdin/stdout text protocol** unchanged. A headless ho
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  gazebo_sync_brain  (flood-fill + gradient walk)                │
-│  stdout → mms commands   stdin ← ack / maze size                │
-└────────────┬───────────────────────────────┬────────────────────┘
-             │                               │
-    ┌────────▼────────┐              ┌───────▼────────┐
-    │  mms GUI        │              │ headless_mms   │
-    │  (visual)       │              │ _host.py       │
-    └─────────────────┘              └────────────────┘
-             │
-             │  /maze/mms_command          /maze/current_cell
-             ▼                               ▼
-    ┌────────────────────┐          ┌─────────────────┐
-    │ cell_motion_       │          │ brain_viz       │
-    │ controller         │          │ (live path)     │
-    │ → Gazebo set_pose  │          └─────────────────┘
-    └─────────┬──────────┘
-              ▼
-       Gazebo Harmonic
-       (physical maze walls)
+                      maze_spec.json                 maze_truth.json
+                   (size, start, goal)                   (walls)
+                            │                               │
+                            ▼                               ▼
+        ┌────────────────────────────────┐        ┌──────────────────┐
+        │  explorer_brain                │        │ raycast_lidar    │
+        │  belief map + flood-fill        │        │ ray-marches the  │
+        │  search → return → speed        │        │ real maze        │
+        └───┬────────────────────────┬───┘        └────────┬─────────┘
+            │ stdout = mms protocol  │                     │ /scan
+            ▼                        │ /maze/mms_command   │
+     ┌─────────────┐                 ▼                     │
+     │  mms GUI    │        ┌────────────────────┐         │
+     │  = BELIEF   │        │ cell_motion_       │◄────────┘
+     │  (setWall)  │        │ controller         │
+     └─────────────┘        │ /cmd_vel → wheels  │
+                            │ /odom   → position │
+                            └─────────┬──────────┘
+                                      ▼
+                               Gazebo Harmonic
+                               = GROUND TRUTH
 ```
+
+The brain and the simulator read **different files**. That is the whole point: mms shows what the robot believes, Gazebo shows what is actually there, and you watch the two converge.
 
 **Key design choices**
 
-1. **Full maze knowledge** — The solver reads `maze_spec.json` (walls, goal, cell size). No wall sensing, no re-flooding mid-run; distances are painted once, exactly like the mms screenshot.
-2. **Decoupled motion** — The brain fires the entire command queue immediately. The controller drains it one cell at a time via Gazebo `set_pose`, so mms finishes instantly while the robot catches up smoothly.
-3. **Pose-driven control** — Skips the fragile ROS↔Gz `/cmd_vel` bridge on WSL/no-GPU setups. Every move is exact with zero odometry drift.
-4. **`resetToStart`** — Every mms Run teleports the robot back to `(0,0)` facing North before the solve, so repeated runs are reproducible.
+1. **The explorer cannot see the maze.** The generator writes two files: `maze_spec.json` (size, cell geometry, start, goal — **no walls**) and `maze_truth.json` (the walls). `explorer_brain` reads only the public one, and `spec.read_public()` *raises* on a file containing walls, so pointing it at the truth file fails loudly instead of quietly cheating. Everything it knows about walls came from `/scan`.
+2. **Three phases, like a competition micromouse.** Search to the goal on an optimistic map (unsensed walls assumed open — that optimism is what pulls the robot into unexplored ground), return to the start still sensing, then a speed run on a *pessimistic* map that only uses passages actually verified.
+3. **Strict lockstep.** The explorer cannot know move *n+1* until the robot has physically arrived at cell *n* and taken a reading there. Send one command → wait for `/maze/step_complete` → wait for consecutive scans to agree → learn → re-flood → decide.
+4. **Closed-loop motion.** `motion:=velocity` publishes `/cmd_vel` and reads back `/odom`; position is earned from odometry rather than asserted. `motion:=pose` keeps the old teleport for recording on a host too slow to drive in real time.
+5. **The old brain is still here, on purpose.** `gazebo_sync_brain` reads every wall up front and fires the whole solution in one burst. It is the omniscient baseline the explorer is measured against.
 
 See [docs/DESIGN.md](docs/DESIGN.md) for coordinate conventions, topic contracts, and failure modes.
 
@@ -92,9 +100,22 @@ cd micromouse_ws
 colcon build --symlink-install --packages-select micromouse
 source install/setup.bash
 
-# Generate a reproducible 16×16 maze (seed 42)
+# Generate a 16×16 maze (omit --seed for one nobody has seen)
 ros2 run micromouse generate_maze --seed 42 --top-down-cam
 ```
+
+### Fastest way to watch it work
+
+No Gazebo, no mms, no GUI — the real brain and the real sensor against a
+kinematic stand-in for the robot's legs:
+
+```bash
+python3 scripts/run_explorer_headless.py
+```
+
+It prints the three phases and a metrics summary. `--noise 0.01` adds a
+centimetre of LiDAR noise; the run is unchanged, because the wall decision
+takes the median of each sector.
 
 ### Terminal 1 — simulation
 
@@ -114,13 +135,26 @@ source install/setup.bash
 ~/squashfs-root/AppRun   # mms AppImage
 ```
 
-In mms: **Maze → Load** `~/.micromouse/maze.num`, set **Mouse → Run command** to:
+In mms: **Maze → Load** `~/.micromouse/maze.num`, set **Mouse → Run command** to point at `explorer_brain` (or `gazebo_sync_brain` for the omniscient baseline):
 
 ```bash
 bash /path/to/micromouse_ws/src/micromouse/run_brain.sh
 ```
 
-Click **Run**. The mms mouse and Gazebo robot advance to the center 2×2 together.
+Click **Run**. Walls appear in the mms window as the robot senses them and the distance field re-settles after every discovery.
+
+Useful launch arguments:
+
+| Argument | Default | Effect |
+|---|---|---|
+| `motion:=velocity\|pose` | `velocity` | drive the wheels vs. teleport |
+| `lidar:=raycast\|gz` | `raycast` | simulated ranges vs. Gazebo's `gpu_lidar` |
+| `lidar_noise:=0.01` | `0.0` | metres of Gaussian range noise |
+
+For `lidar:=gz` the world must be generated with `--sensors`, which adds the
+Gazebo sensors system. That system initialises the Ogre render engine, so on a
+GPU-less host it produces no `/scan` at all — which is exactly why `raycast` is
+the default.
 
 > **Habit:** `Ctrl+C` Terminal 1 before each new launch. Never stack two `ros2 launch` sessions.  
 > Cleanup one-liner: `pkill -9 -f cell_motion_controller; pkill -9 -f "gz sim"; pkill -9 -f brain_viz; pkill -9 -f gazebo_sync_brain`
@@ -134,6 +168,11 @@ Click **Run**. The mms mouse and Gazebo robot advance to the center 2×2 togethe
 ---
 
 ## Demo recordings
+
+> **Note:** the GIFs below were recorded from the **omniscient baseline** brain,
+> before the explorer existed — they show a robot walking a path it already
+> knew. They have not been re-recorded yet. Regenerate them against the
+> explorer with the command below.
 
 Automated capture (headless mms host + live ROS recorder):
 
@@ -165,10 +204,17 @@ python3 scripts/render_solve_gif.py --seed 42 --gif media/mms_solve.gif
 micromouse_ws/
 ├── src/micromouse/                 # ROS 2 ament_python package
 │   ├── micromouse/
-│   │   ├── gazebo_sync_brain.py    # BRAIN — mms protocol + ROS bridge
+│   │   ├── explorer_brain.py       # BRAIN — sees only /scan, lockstep
+│   │   ├── explorer.py             # search / return / speed phases
+│   │   ├── belief_maze.py          # tri-state map: unknown / wall / open
+│   │   ├── scan_to_walls.py        # LaserScan → front/left/right booleans
+│   │   ├── raycast.py              # grid-DDA ray marching (pure)
+│   │   ├── raycast_lidar.py        # the sensor node; owns the truth file
+│   │   ├── run_metrics.py          # what the run cost
+│   │   ├── gazebo_sync_brain.py    # BASELINE — reads the whole maze
 │   │   ├── cell_motion_controller.py
 │   │   ├── brain_viz.py            # Live flood-fill + path window
-│   │   ├── generate_maze.py        # Maze → .num / spec / .world
+│   │   ├── generate_maze.py        # Maze → .num / spec / truth / .world
 │   │   ├── flood_fill.py           # Distance field from center goal
 │   │   ├── planner.py              # Gradient descent + turn planner
 │   │   └── mms_interface.py        # stdin/stdout mms API wrapper
@@ -190,10 +236,18 @@ micromouse_ws/
 
 ```bash
 cd src/micromouse
-python3 -m pytest test/ -q
+python3 -m pytest test/ -q          # 163 tests, no ROS or simulator needed
 ```
 
-Covers maze generation invariants, flood-fill gradient property, mms `.num` round-trip, and planner tie-breaking.
+The exploration policy is proved offline, against a real generated maze and an
+oracle sensor that answers only front/left/right from the robot's current cell:
+
+- 30 seeds × (reaches the goal, returns to start, **never steps through a real wall**, speed run matches the true optimum)
+- everything the belief claims to know is checked against the actual maze
+- a hand-built **lure maze** — a corridor pointing straight at the goal that dead-ends one cell short. Generated mazes never trigger backtracking (recursive-backtracker passages branch rarely enough that heading for the goal is always right), so without this the dead-end recovery path would be entirely untested. A guard test asserts the fixture is still a trap.
+- the anti-cheat boundary, both by behaviour (`read_public` rejects a file with walls) and by a source scan of the modules that must stay blind
+
+Coverage on the new pure modules is 96%; `explorer.py` and `belief_maze.py` are at 100%.
 
 ---
 
